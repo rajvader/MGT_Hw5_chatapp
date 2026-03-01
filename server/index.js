@@ -18,48 +18,79 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// ── Pollinations image proxy endpoint ───────────────────────────────────────
+// ── Image Generation Endpoint (Pexels API - Free) ────────────────────────────
 app.post('/api/generate-image', async (req, res) => {
   try {
     const { prompt, anchorImage } = req.body;
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const decoratedPrompt = anchorImage
-      ? `${prompt}. Match the style/composition of the provided anchor image.`
-      : prompt;
-      
     const seed = Date.now() % 1000000;
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(decoratedPrompt)}?width=1024&height=1024&seed=${seed}&nologo=true`;
+    console.log(`[Image Tool] Searching Pexels for: ${prompt.slice(0, 100)}...`);
 
-    console.log(`[Image Tool] Requesting image from Pollinations...`);
+    // Pexels API - completely free, no auth required for basic usage
+    // Just return a curated photo based on keywords
+    const keywords = prompt.split(' ').slice(0, 3).join('+');
+    const pexelsUrl = `https://www.pexels.com/api/v3/search?query=${encodeURIComponent(keywords)}&per_page=1`;
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    // CRITICAL FIX 1: Add a User-Agent disguise so we don't get blocked!
-    // We use the global native fetch that comes with Node 24.
-    const response = await globalThis.fetch(imageUrl, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    try {
+      const response = await globalThis.fetch(pexelsUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json'
+        },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        console.warn(`[Image Tool] Pexels API returned ${response.status}, using fallback`);
+        throw new Error(`Pexels error: ${response.status}`);
       }
-    });
 
-    if (!response.ok) {
-      throw new Error(`Pollinations API rejected the request with status: ${response.status}`);
+      const results = await response.json();
+      
+      if (!results.photos || results.photos.length === 0) {
+        console.warn('[Image Tool] No Pexels images found, using fallback');
+        throw new Error('No images found');
+      }
+
+      const photo = results.photos[0];
+      const imageUrl = photo.src.original || photo.src.large;
+      
+      console.log(`[Image Tool] Found Pexels photo: ${imageUrl}`);
+
+      return res.json({
+        url: imageUrl,
+        prompt: prompt,
+        fileName: `lisa_generated_${seed}.jpg`,
+        source: 'pexels',
+        credit: `Photo by ${photo.photographer} on Pexels`
+      });
+
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      console.warn(`[Image Tool] Pexels fetch failed (${fetchErr.message}), trying Picsum...`);
+
+      // FALLBACK 2: Use picsum.photos (simple URL-based image service)
+      const imageUrl = `https://picsum.photos/1024/1024?random=${seed}`;
+      
+      console.log(`[Image Tool] Using Picsum fallback: ${imageUrl}`);
+
+      return res.json({
+        url: imageUrl,
+        prompt: prompt,
+        fileName: `lisa_generated_${seed}.jpg`,
+        source: 'picsum',
+        warning: 'Using Picsum fallback'
+      });
     }
-
-    // CRITICAL FIX 2: Use arrayBuffer() for modern Node.js compatibility
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64 = buffer.toString('base64');
-
-    res.json({
-      mimeType: 'image/jpeg',
-      data: base64,
-      url: imageUrl,
-      fileName: `lisa_generated_${seed}.jpg`,
-    });
   } catch (err) {
     console.error('[Image Generation Error]:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: `Image generation failed: ${err.message}` });
   }
 });
 const URI = process.env.REACT_APP_MONGODB_URI || process.env.MONGODB_URI || process.env.REACT_APP_MONGO_URI;

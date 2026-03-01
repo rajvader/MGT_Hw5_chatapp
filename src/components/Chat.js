@@ -444,7 +444,7 @@ export default function Chat({ username, firstName, lastName, onLogout, activeTa
 
     // ── Routing intent ──
     const capturedCsv = csvContext;
-    const wantsImageGeneration = /\b(generate|create|make|design)\b.*\b(image|poster|thumbnail|visual|cover|art)\b/i.test(text);
+    const wantsImageGeneration = /\b(generate|create|make|design|draw|show|illustrate|paint|sketch)\b.*\b(image|poster|thumbnail|visual|cover|art|picture|photo|graphic)\b/i.test(text) || /\b(image|picture|photo|visual)\b/i.test(text);
     // CRITICAL FIX: Force the AI to use your assignment's JS tools instead of hallucinating Python scripts
     const useTools = !!sessionCsvRows || wantsImageGeneration;
     const useCodeExecution = false;

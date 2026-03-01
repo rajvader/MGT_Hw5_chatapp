@@ -91,13 +91,17 @@ export const executeTool = async (name, args, rows = [], context = {}) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to fetch image');
         
+        // Build the data URL from base64 if we have the data
+        let imageUrl = data.url;
+        if (data.data && data.mimeType) {
+          imageUrl = `data:${data.mimeType};base64,${data.data}`;
+        }
+        
         return {
           _chartType: 'generatedImage',
-          data: data.data,
-          mimeType: data.mimeType,
-          url: data.url,
+          url: imageUrl,
           prompt: prompt,
-          fileName: data.fileName
+          fileName: data.fileName || 'generated-image.jpg'
         };
       } catch (e) {
         return { error: `Image generation failed: ${e.message}` };
